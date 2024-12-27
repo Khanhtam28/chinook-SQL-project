@@ -1,0 +1,175 @@
+# chinook-SQL-project
+Chinook, a sample music store database, is used in this project to analyze customer behavior and store performance. 
+Through data analysis, the project aims to draw conclusions and provide recommendations. 
+Please note that this is a hypothetical data analysis exercise based on a simulated dataset and does not represent real-world data.
+
+# SQL
+use chinook;
+
+/*The top 3 over time*/
+-- The top 3 tracks generating the highest revenue
+select t.name as track, sum(il.unitprice * il.quantity) as totalrevenue
+from track t inner join invoiceline il using (trackid)
+group by track
+order by totalrevenue desc;
+-- From the result, there are many tracks generating the same revenue so I add more conditions to filter top 3
+
+-- The top 3 tracks generating the highest revenue & appearing in the most playlists
+select t.name as track, sum(il.unitprice * il.quantity) as totalrevenue, count(plt.trackid) as playlistcount
+from track t 
+inner join invoiceline il using (trackid)
+left join playlisttrack plt using (trackid)
+group by track 
+order by totalrevenue desc, playlistcount desc
+limit 3;
+
+-- The top 3 genres listened to by customers
+select g.name as genre, sum(il.unitprice * il.quantity) as totalrevenue
+from genre g 
+inner join track t using (genreid)
+inner join invoiceline il using (trackid)
+group by genre
+order by totalrevenue desc
+limit 3;
+
+-- The top 3 best-seller albums
+select alb.title as album, sum(il.unitprice * il.quantity) as totalrevenue
+from album alb
+inner join track t using (albumid)
+inner join invoiceline il using (trackid)
+group by album
+order by totalrevenue desc
+limit 3;
+
+-- The top 3 popular artists
+select art.name as artist, sum(il.unitprice * il.quantity) as totalrevenue
+from artist art
+inner join album using (artistid)
+inner join track t using (albumid)
+inner join invoiceline il using (trackid)
+group by artist
+order by totalrevenue desc
+limit 3;
+
+-- The top 3 countries generating the highest sales and the highest number of purchases
+select billingcountry as country, sum(total) as totalsales, count(invoiceid) as numberOfpurchases
+from invoice
+group by country
+order by totalsales desc, numberOfpurchases desc
+limit 3;
+
+
+/*Customer analysis*/
+-- Calculate the average purchase amount for a month in each year
+select year(invoicedate) as year, month(invoicedate) as month, Round(avg(total),2) as avg_purchase
+from invoice
+group by year, month
+order by year, month;
+
+-- Show the lowest and highest number of purchases made by customers
+select min(numberOfpurchases) as lowestPurchase, max(numberOfpurchases) as highestPurchase
+from 
+	(select customerid, count(invoiceid) as numberOfpurchases
+	from invoice
+	group by customerid) as purchases;
+    
+-- Identify the loyal customers who made 7 purchases with a total purchase greater than $40
+select c.customerid, concat(c.firstname, ' ', c.lastname) as customername
+from customer c
+inner join invoice i using (customerid)
+group by customerid
+having count(i.invoiceid) = 7 and sum(i.total) > 40
+order by sum(i.total) desc;
+
+-- Identify the genre listened the most in the USA, Canada and France
+select i.billingcountry as country, g.name as most_listened_genre
+from invoice i
+inner join invoiceline il using (invoiceid)
+inner join track t using (trackid)
+inner join genre g using (genreid)
+where i.billingcountry in ('USA', 'Canada', 'France')
+group by i.billingcountry, g.name
+having count(il.invoicelineid) = (
+        select
+            max(genrecount)
+        from (
+            select i2.billingcountry, t2.genreid, count(il2.invoicelineid) as genrecount
+            from invoice i2
+            join invoiceline il2 using (invoiceid)
+            join track t2 using (trackid)
+            where i2.billingcountry = i.billingcountry
+            group by i2.billingcountry, t2.genreid
+			) as subquery
+        where 
+            subquery.billingcountry = i.billingcountry
+    )
+    order by count(il.invoicelineid) desc;
+
+-- Identify the media type used the most in the USA, Canada and France
+select i.billingcountry as country, m.name as most_used_mediatype
+from invoice i
+inner join invoiceline il using (invoiceid)
+inner join track t using (trackid)
+inner join mediatype m using (mediatypeid)
+where i.billingcountry in ('USA', 'Canada', 'France')
+group by i.billingcountry, m.name
+having count(il.invoicelineid) = (
+	select max(mediacount)
+	from (
+		select i2.billingcountry, t2.mediatypeid, count(il2.invoicelineid) as mediacount
+        from invoice i2
+        inner join invoiceline il2 using (invoiceid)
+        inner join track t2 using (trackid)
+        where i2.billingcountry = i.billingcountry
+        group by i2.billingcountry, t2.mediatypeid
+		) as subquery
+	where subquery.billingcountry = i.billingcountry)
+order by count(il.invoicelineid) desc;
+
+
+/*Playlist recommendation for customers*/
+-- Show the playlists' name and count the number of tracks for each playlist
+select p.name as playlist, count(plt.trackid) as numberOftracks
+from playlist as p
+inner join playlisttrack as plt using (playlistid)
+group by playlist;
+
+-- Show the top 20 popular Rock tracks
+select t.name as track, a.title as album, ar.name as artist
+from track t
+inner join genre g using (genreid)
+inner join album a using (albumid)
+inner join artist ar using (artistid)
+inner join invoiceLine il using (trackid)
+where g.Name = 'Rock'
+group by  track, album, artist
+order by count(il.invoicelineid) desc
+limit 20;
+
+
+/*Employee performance*/
+-- Show the invoices associated with each sales agent & calculate the total sales made by them in each year
+select year(i.invoicedate) as year,
+concat(e.firstname, ' ', e.lastname) as employee_name,
+count(i.invoiceid) as invoices, 
+round(sum(i.total),2) as totalsales  
+from employee as e
+inner join customer as c on e.employeeid = c.supportrepid 
+inner join invoice as i on c.customerid = i.customerid 
+where title = 'Sales Support Agent'
+group by year, employee_name
+order by year;
+
+
+/*Sales and Revenue*/
+-- Show the total quantity sales of each year
+select year(i.invoicedate) as year, sum(il.quantity) as totalsales
+from invoice i inner join invoiceline il using (invoiceid)
+group by year
+order by year;
+
+-- Show the total revenue of each year
+select year(i.invoicedate) as year, sum(il.quantity * il.unitprice) as totalrevenue
+from invoice i inner join invoiceline il using (invoiceid)
+group by year
+order by year;
